@@ -25,7 +25,7 @@
 void* impl_scalar_naive(void* args)
 {
 	/*Get the argument struct*/
-	args_t passed_args = (args_t *) args;
+	args_t* passed_args = (args_t*) args;
 
 	/* Get all the arguments */
 	float* a = (float*) (passed_args -> inputA);
@@ -37,13 +37,16 @@ void* impl_scalar_naive(void* args)
 	int m = (int)(passed_args -> m);
 	int p = (int)(passed_args -> p);
 
+	double temp;
+
 	/* Row Major Implementation of Matrix Multiplication */
 	for (int i = 0; i < n; i++) {
-		for (int j = 0; j < m; j++) {
-			c[i * p + j] = 0;
-			for (int k = 0; k < p; k++) {
-				c[i * p + j] += a[i*n + k] + b[k * p + j];
+		for (int j = 0; j < p; j++) {
+			temp = 0;
+			for (int k = 0; k < m; k++) {
+				temp += a[i*m + k] * b[k * p + j];
 			}
+			c[i * p + j] = (float) temp;
 		}
 	}
 	return NULL;

@@ -42,7 +42,8 @@
 
 const int SIZE_DATA = 8 * 1024 * 1024;
 
-void printHelpMenu(const char* arg, int nthreads, int cpu, int data_size, int dump, int nruns, int nstdevs);
+void readCSVFile(FILE* file, float* array, int size);
+void printHelpMenu(const char* arg, int nthreads, int cpu, char* data_str, int dump, int nruns, int nstdevs);
 
 int main(int argc, char** argv) {
 
@@ -57,9 +58,15 @@ int main(int argc, char** argv) {
 	int nstdevs  = 3;
 
 	int dump 	= 0;
+	int n = 2500;
+	int m = 3000;
+	int p = 2100;
+
+	float delta = 0.5;
 
 	/* Data */
 	int data_size = SIZE_DATA;
+	char* data_str = "native";
 
 	/* Parse arguments */
 	/* Function pointers */
@@ -105,21 +112,31 @@ int main(int argc, char** argv) {
 			assert (++i < argc);
 			if (strcmp(argv[i], "testing") == 0) {
 				data_size = 256;
+				data_str = "testing";
+				n = 16; m = 12; p = 8;
 
                         } else if (strcmp(argv[i], "small"  ) == 0) {
 				data_size = 32 * 1024;
+				data_str = "small";
+				n = 121; m = 180; p = 115;
 
                         } else if (strcmp(argv[i], "medium"  ) == 0) {
 				data_size = 1024 * 1024;
+				data_str = "medium";
+				n = 550; m = 620; p = 480;
 
                         } else if (strcmp(argv[i], "large" ) == 0) {
-                               data_size = 2 * 1024 * 1024;
+				data_size = 2 * 1024 * 1024;
+				data_str = "large";
+				n = 962; m = 1012; p = 1221;
 
-                        } else if (strcmp(argv[i], "native") == 0) {
-                                data_size = 8 * 1024 * 1024;
                         } else {
-				data_size = 0;
+                                data_size = 8 * 1024 * 1024;
+				data_str = "native";
+				n = 2500; m = 3000; p = 2100;
+
 			}
+
 			continue;
 		}
 
@@ -155,8 +172,7 @@ int main(int argc, char** argv) {
 
 		/* Dump Files */
 		if(strcmp(argv[i], "-d") == 0 || strcmp(argv[i], "--dump") == 0) {
-			assert(++i < argc);
-			dump = atoi(argv[i]);
+			dump = 1;
 
 			continue;
 		}
@@ -179,7 +195,7 @@ int main(int argc, char** argv) {
 			}
 		}
 
-		printHelpMenu(argv[0],nthreads,cpu,data_size,dump,nruns,nstdevs);
+		printHelpMenu(argv[0],nthreads,cpu,data_str,dump,nruns,nstdevs);
 	    	exit(help? 0 : 1);
   	}
 
@@ -261,18 +277,60 @@ int main(int argc, char** argv) {
 
 	/* Setting a guards, which is 0xdeadcafe.
 	The guard should not change or be touched. */
-	__SET_GUARD(c , data_size);
+	__SET_GUARD(c , 4*data_size);
+	/* Establishin filenames */
+        char golden_file_name[256];
+	char test_file_name[256];
+        strcpy(golden_file_name, data_str);
+        strcat(golden_file_name, "_golden.csv");
 
-	/* Reading refernce data */
-	FILE * () ;
+        strcpy(test_file_name, data_str);
+        strcat(test_file_name, "_test.csv");
 
+	printf("Golden file name is %s\n", golden_file_name);
+	printf("Test file name is %s\n", test_file_name);
+
+	/* Reading Reference Data */
+	FILE *file = fopen(golden_file_name, "r");
+
+	if (!file) {
+        	perror("Error opening refernce file\n");
+        	return 1;
+    	}
+
+	printf("Golden file opened, attempting read...\n");
+	readCSVFile(file,r, n * p);
+	fclose(file);
+	printf("Read of golden file succsessful\n");
+
+	/* Reading Input Data */
+	file = fopen(test_file_name, "r");
+
+	if (!file) {
+		perror("Error opening input file\n");
+		return 1;
+	}
+	printf("Test file opened, attempting read...\n");
+	printf("Reading a..\n");
+	readCSVFile(file, a, n*m);
+	printf("Reading b..\n");
+	readCSVFile(file, b, m*p);
+	fclose(file);
+	printf("Test file read sucsessfully.\n");
 	/* Execute the requested implementation */
 	/* Arguments for the function */
 	args_t args;
 
-	args.size     = data_size;
-	args.input    = src;
-	args.output   = dest;
+
+	args.inputA	= a;
+	args.inputB	= b;
+	args.output	= c;
+
+	args.n		= n;
+	args.m		= m;
+	args.p		= p;
+
+	args.size = data_size;
 
 	args.cpu      = cpu;
 	args.nthreads = nthreads;
@@ -295,8 +353,8 @@ int main(int argc, char** argv) {
 	/* Verfication */
 	printf("  * Verifying results .... ");
 
-	bool match = __CHECK_MATCH(ref, dest, data_size);
-	bool guard = __CHECK_GUARD(     dest, data_size);
+	bool match = __CHECK_FLOAT_MATCH(r, c, data_size,delta);
+	bool guard = __CHECK_GUARD(c, 4* data_size);
 
 	if (match && guard) {
 		printf("Success\n");
@@ -313,13 +371,13 @@ int main(int argc, char** argv) {
 	}
 
 	/* Running analytics */
-	uint64_t min     = -1;
-	uint64_t max     =  0;
+	double min     = -1;
+	double max     =  0;
 
-	uint64_t avg     =  0;
+	double avg     =  0;
 	uint64_t avg_n   =  0;
 
-	uint64_t std     =  0;
+	double std     =  0;
 	uint64_t std_n   =  0;
 
 	int      n_msked =  0;
@@ -387,8 +445,8 @@ int main(int argc, char** argv) {
 			}
 		}
 
-		printf("      - Standard deviation = %" PRIu64 "\n", std);
-		printf("      - Average = %" PRIu64 "\n", avg);
+		printf("      - Standard deviation = %lf\n", std);
+		printf("      - Average = %lf\n", avg);
 		printf("      - Number of active elements = %" PRIu64 "\n", avg_n);
 		printf("      - Number of masked-off = %d\n", n_msked);
 
@@ -396,9 +454,30 @@ int main(int argc, char** argv) {
 
 	/* Display information */
 	printf("  * Runtimes (%s): ", __PRINT_MATCH(match));
-	printf(" %" PRIu64 " ns\n"  , avg                 );
+	printf(" %lf ns\n"  , avg                 );
 
-	/* Dump */
+	/* Output dump */
+	if (dump == 1) {
+		file;
+		char name[256];
+
+		strcpy(name, data_str);
+		strcat(name, "_dump.csv");
+
+		printf("    - Filename: %s\n", name);
+		printf("    - Opening file .... ");
+
+		file = fopen(name, "w");
+
+		for (int i = 0; i < n; i++) {
+			for (int j = 0; j < p; j++) {
+				fprintf(file,"%lf,", c[i*p + j]);
+			}
+		}
+		printf("Writing output dump complete\n");
+		fclose(file);
+	}
+	/* Runtime dump */
 	printf("  * Dumping runtime informations:\n");
 
 	FILE * fp;
@@ -428,7 +507,7 @@ int main(int argc, char** argv) {
 		}
 
 		fprintf(fp, "\n");
-		fprintf(fp, "avg,%" PRIu64 "", avg);
+		fprintf(fp, "avg,%lf", avg);
 		printf("Finished\n");
 		printf("    - Closing file handle .... ");
 		fclose(fp);
@@ -440,9 +519,10 @@ int main(int argc, char** argv) {
 	printf("\n");
 
 	/* Manage memory */
-	free(src);
-	free(dest);
-	free(ref);
+	free(a);
+	free(b);
+	free(c);
+	free(r);
 
 	/* Finished with statistics */
 	__DESTROY_STATS();
@@ -452,7 +532,7 @@ int main(int argc, char** argv) {
 }
 
 
-void printHelpMenu(const char* arg, int nthreads, int cpu, int data_size, int dump, int nruns, int nstdevs) {
+void printHelpMenu(const char* arg, int nthreads, int cpu, char* data_str, int dump, int nruns, int nstdevs) {
 	    printf("\n");
 	    printf("Usage:\n");
 	    printf("  %s {-i | --impl} impl_str [Options]\n", arg);
@@ -464,9 +544,34 @@ void printHelpMenu(const char* arg, int nthreads, int cpu, int data_size, int du
 	    printf("    -h | --help      Print this message\n");
 	    printf("    -n | --nthreads  Set number of threads available (default = %d)\n", nthreads);
 	    printf("    -c | --cpu       Set the main CPU for the program (default = %d)\n", cpu);
-	    printf("    -s | --size      Size of input and output data (default = %d)\n", data_size);
+	    printf("    -s | --size      Size of input and output data (default = %s), Available implementations: {testing, small, medium, large,native}\n", data_str);
 	    printf("    -d | --dump      Enable dump files (default = %d)\n", dump);
 	    printf("         --nruns     Number of runs to the implementation (default = %d)\n", nruns);
 	    printf("         --stdevs    Number of standard deviation to exclude outliers (default = %d)\n", nstdevs);
 	    printf("\n");
+}
+
+/* This function will be used to read CSV files for inputs as well as reference output */
+void readCSVFile(FILE* file, float* array, int size) {
+    int i = 0;
+    char c;
+
+    if (!file) {
+        perror("Error: File is not defined");
+        exit(1);
+    }
+
+    if (!array) {
+        perror("Error: Array is not defined");
+        exit(1);
+    }
+
+    while (i < size && fscanf(file, "%f", &array[i]) == 1) {
+        //printf("%f\n", array[i]);
+        i++;
+        c = fgetc(file);
+        if (c == '\n' || c == EOF) {
+            break;
+        }
+    }
 }

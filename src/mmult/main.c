@@ -42,8 +42,10 @@
 
 const int SIZE_DATA = 8 * 1024 * 1024;
 
+void outputDump(char* data_str, int n, int p, float* c);
+void readInput(char* data_str, int n, int m, int p, float* a, float* b, float* r);
 void readCSVFile(FILE* file, float* array, int size);
-void printHelpMenu(const char* arg, int nthreads, int cpu, char* data_str, int dump, int nruns, int nstdevs);
+void printHelpMenu(const char* arg, int nthreads, int cpu, char* data_str, bool dump, int nruns, int nstdevs, int beta);
 
 int main(int argc, char** argv) {
 
@@ -57,11 +59,13 @@ int main(int argc, char** argv) {
 	int nruns    = 10000;
 	int nstdevs  = 3;
 
-	int dump 	= 0;
+	bool dump 	= false;
+	
 	int n = 2500;
 	int m = 3000;
 	int p = 2100;
-
+	int beta = 4;
+	
 	float delta = 0.5;
 
 	/* Data */
@@ -169,14 +173,21 @@ int main(int argc, char** argv) {
 
 			continue;
 		}
-
+		
+		/* Degree of sub-matrices: for optimized implementation*/
+		if(strcmp(argv[i], "-b") == 0 ||strcmp(argv[i], "--beta") == 0) {
+			assert(++i < argc);
+			beta = atof(argv[i]);
+			continue;
+		}
+		
 		/* Dump Files */
 		if(strcmp(argv[i], "-d") == 0 || strcmp(argv[i], "--dump") == 0) {
-			dump = 1;
+			dump = true;
 
 			continue;
 		}
-
+		
 		/* Help */
 		if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
 			help = true;
@@ -195,7 +206,7 @@ int main(int argc, char** argv) {
 			}
 		}
 
-		printHelpMenu(argv[0],nthreads,cpu,data_str,dump,nruns,nstdevs);
+		printHelpMenu(argv[0],nthreads,cpu,data_str,dump,nruns,nstdevs,beta);
 	    	exit(help? 0 : 1);
   	}
 
@@ -275,52 +286,15 @@ int main(int argc, char** argv) {
 	/* Since reference is already computed, no need for guard bit */
 	float* r = __ALLOC_DATA(float, data_size + 0);
 
-	/* Setting a guards, which is 0xdeadcafe.
-	The guard should not change or be touched. */
+	/* Setting a guards, which is 0xdeadcafe. The guard should not change or be touched. */
 	__SET_GUARD(c , 4*data_size);
-	/* Establishin filenames */
-        char golden_file_name[256];
-	char test_file_name[256];
-        strcpy(golden_file_name, data_str);
-        strcat(golden_file_name, "_golden.csv");
-
-        strcpy(test_file_name, data_str);
-        strcat(test_file_name, "_test.csv");
-
-	printf("Golden file name is %s\n", golden_file_name);
-	printf("Test file name is %s\n", test_file_name);
-
-	/* Reading Reference Data */
-	FILE *file = fopen(golden_file_name, "r");
-
-	if (!file) {
-        	perror("Error opening refernce file\n");
-        	return 1;
-    	}
-
-	printf("Golden file opened, attempting read...\n");
-	readCSVFile(file,r, n * p);
-	fclose(file);
-	printf("Read of golden file succsessful\n");
-
-	/* Reading Input Data */
-	file = fopen(test_file_name, "r");
-
-	if (!file) {
-		perror("Error opening input file\n");
-		return 1;
-	}
-	printf("Test file opened, attempting read...\n");
-	printf("Reading a..\n");
-	readCSVFile(file, a, n*m);
-	printf("Reading b..\n");
-	readCSVFile(file, b, m*p);
-	fclose(file);
-	printf("Test file read sucsessfully.\n");
+	
+	/* Reading files */
+	readInput(data_str, n, m, p, a, b, r);
+	
 	/* Execute the requested implementation */
 	/* Arguments for the function */
 	args_t args;
-
 
 	args.inputA	= a;
 	args.inputB	= b;
@@ -334,6 +308,8 @@ int main(int argc, char** argv) {
 
 	args.cpu      = cpu;
 	args.nthreads = nthreads;
+	
+	args.beta 	= beta;
 
 	/* Start execution */
 	printf("Running \"%s\" implementation:\n", impl_str);
@@ -371,17 +347,17 @@ int main(int argc, char** argv) {
 	}
 
 	/* Running analytics */
-	double min     = -1;
-	double max     =  0;
+	double min		= -1;
+	double max		=  0;
 
-	double avg     =  0;
-	uint64_t avg_n   =  0;
+	double avg		=  0;
+	uint64_t avg_n	=  0;
 
-	double std     =  0;
-	uint64_t std_n   =  0;
+	double std		=  0;
+	uint64_t std_n	=  0;
 
-	int      n_msked =  0;
-	int      n_stats =  0;
+	int n_msked 	=  0;
+	int n_stats 	=  0;
 
 	for (int i = 0; i < num_runs; i++)
 		runtimes_mask[i] = true;
@@ -457,25 +433,8 @@ int main(int argc, char** argv) {
 	printf(" %lf ns\n"  , avg                 );
 
 	/* Output dump */
-	if (dump == 1) {
-		file;
-		char name[256];
-
-		strcpy(name, data_str);
-		strcat(name, "_dump.csv");
-
-		printf("    - Filename: %s\n", name);
-		printf("    - Opening file .... ");
-
-		file = fopen(name, "w");
-
-		for (int i = 0; i < n; i++) {
-			for (int j = 0; j < p; j++) {
-				fprintf(file,"%lf,", c[i*p + j]);
-			}
-		}
-		printf("Writing output dump complete\n");
-		fclose(file);
+	if (dump) {
+	 outputDump(data_str, n, p, c);
 	}
 	/* Runtime dump */
 	printf("  * Dumping runtime informations:\n");
@@ -531,24 +490,25 @@ int main(int argc, char** argv) {
 	return 0;
 }
 
-
-void printHelpMenu(const char* arg, int nthreads, int cpu, char* data_str, int dump, int nruns, int nstdevs) {
-	    printf("\n");
-	    printf("Usage:\n");
-	    printf("  %s {-i | --impl} impl_str [Options]\n", arg);
-	    printf("  \n");
-	    printf("  Required:\n");
-	    printf("    -i | --impl      Available implementations = {naive, opt, vec, para}\n");
-	    printf("    \n");
-	    printf("  Options:\n");
-	    printf("    -h | --help      Print this message\n");
-	    printf("    -n | --nthreads  Set number of threads available (default = %d)\n", nthreads);
-	    printf("    -c | --cpu       Set the main CPU for the program (default = %d)\n", cpu);
-	    printf("    -s | --size      Size of input and output data (default = %s), Available implementations: {testing, small, medium, large,native}\n", data_str);
-	    printf("    -d | --dump      Enable dump files (default = %d)\n", dump);
-	    printf("         --nruns     Number of runs to the implementation (default = %d)\n", nruns);
-	    printf("         --stdevs    Number of standard deviation to exclude outliers (default = %d)\n", nstdevs);
-	    printf("\n");
+/* This function will be used to print the help menu */
+void printHelpMenu(const char* arg, int nthreads, int cpu, char* data_str, bool dump, int nruns, int nstdevs, int beta) {
+	printf("\n");
+	printf("Usage:\n");
+	printf("  %s {-i | --impl} impl_str [Options]\n", arg);
+	printf("\n");
+	printf("  Required:\n");
+	printf("    -i    | --impl       Available implementations = {naive, opt, vec, para}\n");
+	printf("\n");
+	printf("  Options:\n");
+	printf("    -h    | --help       Print this message\n");
+	printf("    -n    | --nthreads   Set number of threads available (default = %d)\n", nthreads);
+	printf("    -c    | --cpu        Set the main CPU for the program (default = %d)\n", cpu);
+	printf("    -s    | --size       Size of input and output data (default = %s), Available sizes: {testing, small, medium, large, native}\n", data_str);
+	printf("          | --nruns      Number of runs to the implementation (default = %d)\n", nruns);
+	printf("          | --stdevs     Number of standard deviations to exclude outliers (default = %d)\n", nstdevs);
+	printf("    -b    | --beta       Size of submatrices (default = %d)\n", beta);
+	printf("    -d    | --dump       Enable dump files (default = %s)\n", dump ? "True" : "False");
+	printf("\n");
 }
 
 /* This function will be used to read CSV files for inputs as well as reference output */
@@ -574,4 +534,81 @@ void readCSVFile(FILE* file, float* array, int size) {
             break;
         }
     }
+}
+
+/* This function will be used to populate matrices a, b, and golden output "r" with values from CSV files */
+void readInput(char* data_str, int n, int m, int p, float* a, float* b, float* r) {
+	
+	/* Establishin filenames */
+    char golden_file_name[256];
+	char test_file_name[256];
+	
+    strcpy(golden_file_name, data_str);
+    strcat(golden_file_name, "_golden.csv");
+
+    strcpy(test_file_name, data_str);
+    strcat(test_file_name, "_test.csv");
+
+	printf("Assuming Golden file name is %s\n", golden_file_name);
+	printf("Assuming Test file name is %s\n", test_file_name);
+
+	/* Reading Reference Data */
+	FILE *file = fopen(golden_file_name, "r");
+
+	/* Error checking */
+	if (!file) {
+		perror("Error opening refernce file\n"); 
+		exit(1); 
+	}
+
+	printf("Golden file opened, attempting read...\n");
+	readCSVFile(file,r, n * p);
+	printf("Golden file read succsessfully\n");
+	fclose(file);
+	
+	
+	/* Reading Input Data */
+	file = fopen(test_file_name, "r");
+
+	/* Error checking */
+	if (!file) {
+			perror("Error opening input file\n");
+			exit(1);
+		}
+	
+	printf("Test file opened, attempting to read...\n");
+	printf("Reading matrix a...\n");
+	readCSVFile(file, a, n*m);
+	printf("Matrix A read succsessfully\n");
+
+	printf("Reading matrix b...\n");
+	readCSVFile(file, b, m*p);
+	printf("Matrix B read succsessfully\n");
+	printf("Test file read sucsessfully.\n");
+	fclose(file);
+}
+
+/* This function will be used to dump the output results to a CSV file */
+void outputDump(char* data_str, int n, int p, float* c) {
+	char name[256];
+	strcpy(name, data_str);
+	strcat(name, "_dump.csv");
+	printf("\nOutput Dump:\n");
+	
+	printf("Output file name is %s\n", name);
+	FILE *file = fopen(name, "w");
+
+	if (!file) { 
+		perror("Error opening dump file\n"); 
+		exit(1);
+	}
+	
+	printf("Output file opened, attempting to write...\n");
+	for (int i = 0; i < n; i++) {
+		for (int j = 0; j < p; j++) {
+			fprintf(file,"%lf,", c[i*p + j]);
+		}
+	}
+	printf("Output dumped to file succsessfully\n\n");
+	fclose(file);
 }

@@ -22,6 +22,7 @@ typedef struct {
 
 	int     cpu;
 	int     nthreads;
+	int 	beta;
 } args_t;
 
 #endif //__INCLUDE_TYPES_H_

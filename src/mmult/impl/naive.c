@@ -27,6 +27,7 @@ void* impl_scalar_naive(void* args)
 	/*Get the argument struct*/
 	args_t* passed_args = (args_t*) args;
 
+
 	/* Get all the arguments */
 	float* a = (float*) (passed_args -> inputA);
 	float* b = (float*) (passed_args -> inputB);

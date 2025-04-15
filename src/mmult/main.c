@@ -66,7 +66,7 @@ int main(int argc, char** argv) {
 	int p = 2100;
 	int beta = 4;
 	
-	float delta = 0.5;
+	float delta = 1e-2;
 
 	/* Data */
 	int data_size = SIZE_DATA;
